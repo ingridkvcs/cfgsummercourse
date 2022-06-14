@@ -3,4 +3,4 @@ A Git Repository Example
 
 This is my first change
 
-VIM sucks.
+This is my second change
