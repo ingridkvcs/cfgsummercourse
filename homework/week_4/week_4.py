@@ -15,56 +15,49 @@ Tasks:
 
 """
 
-account_balance = 100
-correct_pin = 2846
-valid_pin = False
 
-for attempt in range(3):
-    user_pin_code = input("Enter your PIN: ")
-    try:
-        if not user_pin_code:
-            raise Exception("Please enter a PIN.")
-        if int(user_pin_code) != correct_pin:
-            raise Exception("PIN incorrect.")
-    except Exception as ex:
-        print(ex)
-    else:
-        valid_pin = True
-        break
+def validate_pin(correct_pin, user_pin_code):
+    if not user_pin_code:
+        raise AttributeError("Please enter a PIN.")
+    if int(user_pin_code) != correct_pin:
+        raise ValueError("PIN incorrect.")
 
-if not valid_pin:
-    raise Exception("Invalid PIN 3 times - unauthorised, so exiting")
 
-requested_sum = 0
-while not requested_sum:
-    requested_sum = input("Introduced the sum you want to withdraw: ")
+def withdraw(requested_amount, account_balance):
+    if int(requested_amount) < 0:
+        raise ValueError("Cannot input negative numbers")
 
-if int(requested_sum) < 0:
-    raise Exception("Cannot input negative numbers")
+    if int(requested_amount) > account_balance:
+        raise ValueError("Insufficient funds. Try different amount.")
 
-if int(requested_sum) > account_balance:
-    raise Exception("Insufficient funds. Try different amount.")
+    return account_balance - int(requested_amount)
 
-account_balance -= int(requested_sum)
-print(account_balance)
 
-# from random import randint
-#
-# def test_try():
-#     try:
-#         x = randint(0, 100)
-#         if x < 20:
-#             raise Exception("Number too low")
-#         if x < 50:
-#             raise Exception("Halfy")
-#         x = x * 3
-#         print("Yas man " + str(x))
-#     finally:
-#         print("Oh well, at least it's done")
-#
-#     print("AFTER")
-#
-# try:
-#     test_try()
-# except Exception as ex:
-#     print("close one: " + str(ex))
+def atm():
+    account_balance = 100
+    correct_pin = 2846
+    valid_pin = False
+
+    for attempt in range(3):
+        user_pin_code = input("Enter your PIN: ")
+        try:
+            validate_pin(correct_pin, user_pin_code)
+        except Exception as ex:
+            print(ex)
+        else:
+            valid_pin = True
+            break
+
+    if not valid_pin:
+        raise Exception("Invalid PIN 3 times - unauthorised, so exiting")
+
+    requested_sum = 0
+    while not requested_sum:
+        requested_sum = input("Input the amount you want to withdraw: ")
+
+    return withdraw(requested_sum, account_balance)
+
+
+if __name__ == '__main__':
+    new_balance = atm()
+    print("Your new balance is: " + str(new_balance))
