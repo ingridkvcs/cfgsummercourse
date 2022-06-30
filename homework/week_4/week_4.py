@@ -49,10 +49,10 @@ def atm():
             break
 
     if not valid_pin:
-        raise Exception("Invalid PIN 3 times - unauthorised, so exiting")
+        raise ValueError("Invalid PIN 3 times - unauthorised, so exiting")
 
     requested_sum = 0
-    while not requested_sum:
+    while not requested_sum or int(requested_sum) <= 0:
         requested_sum = input("Input the amount you want to withdraw: ")
 
     return withdraw(requested_sum, account_balance)
@@ -61,3 +61,4 @@ def atm():
 if __name__ == '__main__':
     new_balance = atm()
     print("Your new balance is: " + str(new_balance))
+

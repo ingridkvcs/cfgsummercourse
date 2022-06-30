@@ -63,14 +63,18 @@ class TestAtm(TestCase):
         self.assertEqual(result, 30)
         self.assertEqual(inputs.call_count, 2)
 
+    @patch('builtins.input', side_effect=[2876, 3456, 3412])
+    def test_giveAFailedAttemptToValidatePIN_whenUsingAtm_thenAnExceptionIsThrown(self, inputs):
+        with self.assertRaises(ValueError) as ex:
+            atm()
+        self.assertEqual(inputs.call_count, 3)
+
+    @patch('builtins.input', side_effect=[2846, None, -1, 0, 20])
+    def test_givenThreeInvalidRequestedAmountFollowedByAValidAmount_whenUsingAtm_thenTheRemainingAmountIs80(self, inputs):
+        result = atm()
+        self.assertEqual(result, 80)
+
 
 if __name__ == '__main__':
     main()
 
-#
-# class TestRedOrBlueFunction(TestCase):
-#
-#     def test_odd_numbers(self):
-#         expected = 'Red'
-#         result = red_or_blue(num=3)
-#         self.assertEqual(expected, result)

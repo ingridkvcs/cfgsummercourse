@@ -9,7 +9,7 @@ class TestFindPairSum(TestCase):
 
         result = find_pair(num_list, target_sum)
 
-        self.assertEqual((11, -1), result)
+        self.assertEqual([11, -1], result)
 
     def test_givenAnEmptyArray_whenCallingFindPairFunction_thenAnEmptyArrayIsReturned(self):
         num_list = []
