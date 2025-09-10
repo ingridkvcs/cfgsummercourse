@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"testing"
 
@@ -88,7 +89,7 @@ func TestAllowedAppsAreNotMutated(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// Reset host client to ensure clean test state
 			host.Client = nil
-			
+
 			// Build the validation request
 			payload, err := kubewarden_testing.BuildValidationRequest(&tc.pod, &tc.settings)
 			if err != nil {
@@ -129,21 +130,21 @@ func TestPodMutationWithTolerationAddition(t *testing.T) {
 	settings := Settings{
 		WorkloadTolerationKey: "workload",
 		WorkloadNamespaceTag:  "Workload",
-		AllowedApps:          []AllowedApp{},
+		AllowedApps:           []AllowedApp{},
 	}
 
 	testCases := []struct {
-		name               string
-		podName            string
+		name                string
+		podName             string
 		existingTolerations []*corev1.Toleration
-		workloadValue      string
-		verifyFunc         func(*testing.T, *corev1.Pod)
+		workloadValue       string
+		verifyFunc          func(*testing.T, *corev1.Pod)
 	}{
 		{
-			name:               "Pod gets toleration from namespace annotation",
-			podName:            "test-app",
+			name:                "Pod gets toleration from namespace annotation",
+			podName:             "test-app",
 			existingTolerations: nil,
-			workloadValue:      "frontend",
+			workloadValue:       "frontend",
 			verifyFunc: func(t *testing.T, pod *corev1.Pod) {
 				if len(pod.Spec.Tolerations) != 1 {
 					t.Errorf("Expected 1 toleration, got %d", len(pod.Spec.Tolerations))
@@ -164,7 +165,7 @@ func TestPodMutationWithTolerationAddition(t *testing.T) {
 				// Verify GPU toleration preserved
 				found := false
 				for _, tol := range pod.Spec.Tolerations {
-					if tol.Key == "node-type" && tol.Value == "gpu" {
+					if tol != nil && tol.Key == "node-type" && tol.Value == "gpu" {
 						found = true
 						break
 					}
@@ -185,14 +186,14 @@ func TestPodMutationWithTolerationAddition(t *testing.T) {
 			verifyFunc: func(t *testing.T, pod *corev1.Pod) {
 				// Verify old workload toleration is gone
 				for _, tol := range pod.Spec.Tolerations {
-					if tol.Key == "workload" && tol.Value == "old-value" {
+					if tol != nil && tol.Key == "workload" && tol.Value == "old-value" {
 						t.Error("Old workload toleration should have been replaced")
 					}
 				}
 				// Verify other toleration preserved
 				found := false
 				for _, tol := range pod.Spec.Tolerations {
-					if tol.Key == "other" && tol.Value == "keep-this" {
+					if tol != nil && tol.Key == "other" && tol.Value == "keep-this" {
 						found = true
 						break
 					}
@@ -257,17 +258,27 @@ func TestPodMutationWithTolerationAddition(t *testing.T) {
 				t.Fatal("Expected mutation but got none")
 			}
 
-			// Parse mutated pod
-			mutatedPodJSON, _ := json.Marshal(response.MutatedObject)
+			// Parse mutated pod - MutatedObject is base64 encoded JSON string
 			var mutatedPod corev1.Pod
-			json.Unmarshal(mutatedPodJSON, &mutatedPod)
+			mutatedBase64 := response.MutatedObject.(string)
+			mutatedBytes, err := base64.StdEncoding.DecodeString(mutatedBase64)
+			if err != nil {
+				t.Fatalf("Cannot decode base64 mutated object: %v", err)
+			}
+			if err := json.Unmarshal(mutatedBytes, &mutatedPod); err != nil {
+				t.Fatalf("Cannot unmarshal mutated pod: %v", err)
+			}
 
 			// Verify workload toleration exists with correct value
 			found := false
+			if mutatedPod.Spec == nil {
+				t.Fatal("Mutated pod has nil Spec")
+			}
 			for _, tol := range mutatedPod.Spec.Tolerations {
-				if tol.Key == "workload" && 
-					tol.Operator == "Equal" && 
-					tol.Value == tc.workloadValue && 
+				if tol != nil &&
+					tol.Key == "workload" &&
+					tol.Operator == "Equal" &&
+					tol.Value == tc.workloadValue &&
 					tol.Effect == "NoExecute" {
 					found = true
 					break
