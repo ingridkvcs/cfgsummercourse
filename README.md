@@ -125,250 +125,162 @@ func TestAllowedAppsAreNotMutated(t *testing.T) {
 }
 
 func TestPodMutationWithTolerationAddition(t *testing.T) {
-	// Test that pods get tolerations added based on namespace annotation
-	
+	// Default settings for all tests
+	settings := Settings{
+		WorkloadTolerationKey: "workload",
+		WorkloadNamespaceTag:  "Workload",
+		AllowedApps:          []AllowedApp{},
+	}
+
 	testCases := []struct {
-		name              string
-		pod               corev1.Pod
-		namespace         corev1.Namespace
-		settings          Settings
-		expectedToleration *corev1.Toleration
-		description       string
+		name               string
+		podName            string
+		existingTolerations []*corev1.Toleration
+		workloadValue      string
+		verifyFunc         func(*testing.T, *corev1.Pod)
 	}{
 		{
-			name: "Pod gets toleration from namespace annotation",
-			pod: corev1.Pod{
-				Metadata: &metav1.ObjectMeta{
-					Name:      "test-app",
-					Namespace: "production",
-				},
-				Spec: &corev1.PodSpec{},
+			name:               "Pod gets toleration from namespace annotation",
+			podName:            "test-app",
+			existingTolerations: nil,
+			workloadValue:      "frontend",
+			verifyFunc: func(t *testing.T, pod *corev1.Pod) {
+				if len(pod.Spec.Tolerations) != 1 {
+					t.Errorf("Expected 1 toleration, got %d", len(pod.Spec.Tolerations))
+				}
 			},
-			namespace: corev1.Namespace{
-				Metadata: &metav1.ObjectMeta{
-					Name: "production",
-					Annotations: map[string]string{
-						"Workload": "frontend",
-					},
-				},
-			},
-			settings: Settings{
-				WorkloadTolerationKey: "workload",
-				WorkloadNamespaceTag:  "Workload",
-				AllowedApps:          []AllowedApp{},
-			},
-			expectedToleration: &corev1.Toleration{
-				Key:      "workload",
-				Operator: "Equal",
-				Value:    "frontend",
-				Effect:   "NoExecute",
-			},
-			description: "Pod should have workload toleration added from namespace annotation",
 		},
 		{
-			name: "Pod with existing tolerations gets additional workload toleration",
-			pod: corev1.Pod{
-				Metadata: &metav1.ObjectMeta{
-					Name:      "database-app",
-					Namespace: "backend",
-				},
-				Spec: &corev1.PodSpec{
-					Tolerations: []*corev1.Toleration{
-						{
-							Key:      "node-type",
-							Operator: "Equal",
-							Value:    "gpu",
-							Effect:   "NoSchedule",
-						},
-					},
-				},
+			name:    "Pod with existing tolerations gets additional workload toleration",
+			podName: "database-app",
+			existingTolerations: []*corev1.Toleration{
+				{Key: "node-type", Operator: "Equal", Value: "gpu", Effect: "NoSchedule"},
 			},
-			namespace: corev1.Namespace{
-				Metadata: &metav1.ObjectMeta{
-					Name: "backend",
-					Annotations: map[string]string{
-						"Workload": "database",
-					},
-				},
+			workloadValue: "database",
+			verifyFunc: func(t *testing.T, pod *corev1.Pod) {
+				if len(pod.Spec.Tolerations) != 2 {
+					t.Errorf("Expected 2 tolerations, got %d", len(pod.Spec.Tolerations))
+				}
+				// Verify GPU toleration preserved
+				found := false
+				for _, tol := range pod.Spec.Tolerations {
+					if tol.Key == "node-type" && tol.Value == "gpu" {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Error("Original GPU toleration was not preserved")
+				}
 			},
-			settings: Settings{
-				WorkloadTolerationKey: "workload",
-				WorkloadNamespaceTag:  "Workload",
-				AllowedApps:          []AllowedApp{},
-			},
-			expectedToleration: &corev1.Toleration{
-				Key:      "workload",
-				Operator: "Equal",
-				Value:    "database",
-				Effect:   "NoExecute",
-			},
-			description: "Pod should keep existing tolerations and add workload toleration",
 		},
 		{
-			name: "Pod with existing workload toleration gets it replaced",
-			pod: corev1.Pod{
-				Metadata: &metav1.ObjectMeta{
-					Name:      "api-server",
-					Namespace: "services",
-				},
-				Spec: &corev1.PodSpec{
-					Tolerations: []*corev1.Toleration{
-						{
-							Key:      "workload",
-							Operator: "Equal",
-							Value:    "old-value",
-							Effect:   "NoExecute",
-						},
-						{
-							Key:      "other",
-							Operator: "Equal",
-							Value:    "keep-this",
-							Effect:   "NoSchedule",
-						},
-					},
-				},
+			name:    "Pod with existing workload toleration gets it replaced",
+			podName: "api-server",
+			existingTolerations: []*corev1.Toleration{
+				{Key: "workload", Operator: "Equal", Value: "old-value", Effect: "NoExecute"},
+				{Key: "other", Operator: "Equal", Value: "keep-this", Effect: "NoSchedule"},
 			},
-			namespace: corev1.Namespace{
-				Metadata: &metav1.ObjectMeta{
-					Name: "services",
-					Annotations: map[string]string{
-						"Workload": "api",
-					},
-				},
+			workloadValue: "api",
+			verifyFunc: func(t *testing.T, pod *corev1.Pod) {
+				// Verify old workload toleration is gone
+				for _, tol := range pod.Spec.Tolerations {
+					if tol.Key == "workload" && tol.Value == "old-value" {
+						t.Error("Old workload toleration should have been replaced")
+					}
+				}
+				// Verify other toleration preserved
+				found := false
+				for _, tol := range pod.Spec.Tolerations {
+					if tol.Key == "other" && tol.Value == "keep-this" {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Error("Non-workload toleration was not preserved")
+				}
 			},
-			settings: Settings{
-				WorkloadTolerationKey: "workload",
-				WorkloadNamespaceTag:  "Workload",
-				AllowedApps:          []AllowedApp{},
-			},
-			expectedToleration: &corev1.Toleration{
-				Key:      "workload",
-				Operator: "Equal",
-				Value:    "api",
-				Effect:   "NoExecute",
-			},
-			description: "Existing workload toleration should be replaced with new value",
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Setup mock for namespace fetch
+			// Create pod with test data
+			pod := corev1.Pod{
+				Metadata: &metav1.ObjectMeta{
+					Name:      tc.podName,
+					Namespace: "test-namespace",
+				},
+				Spec: &corev1.PodSpec{
+					Tolerations: tc.existingTolerations,
+				},
+			}
+
+			// Create namespace with workload annotation
+			namespace := corev1.Namespace{
+				Metadata: &metav1.ObjectMeta{
+					Name: "test-namespace",
+					Annotations: map[string]string{
+						"Workload": tc.workloadValue,
+					},
+				},
+			}
+
+			// Setup mock
 			mockClient := &mocks.MockWapcClient{}
-			
-			// Build the expected namespace request
 			resourceRequest, _ := json.Marshal(&kubernetes.GetResourceRequest{
 				APIVersion: "v1",
 				Kind:       "Namespace",
-				Name:       "default", // BuildValidationRequest doesn't set namespace, so it defaults to "default"
+				Name:       "default",
 			})
-			
-			// Marshal the namespace response
-			namespaceRaw, _ := json.Marshal(tc.namespace)
-			
-			// Setup mock expectation
+			namespaceRaw, _ := json.Marshal(namespace)
 			mockClient.On("HostCall", "kubewarden", "kubernetes", "get_resource", resourceRequest).Return(namespaceRaw, nil)
-			
-			// Set the mock client
 			host.Client = mockClient
-			
-			// Build validation request
-			payload, err := kubewarden_testing.BuildValidationRequest(&tc.pod, &tc.settings)
-			if err != nil {
-				t.Fatalf("Failed to build validation request: %v", err)
-			}
-			
+			defer func() { host.Client = nil }()
+
 			// Execute mutation
+			payload, _ := kubewarden_testing.BuildValidationRequest(&pod, &settings)
 			responsePayload, err := mutate(payload)
 			if err != nil {
-				t.Fatalf("Mutation failed with error: %v", err)
+				t.Fatalf("Mutation failed: %v", err)
 			}
-			
+
 			// Parse response
 			var response kubewarden_protocol.ValidationResponse
-			if err := json.Unmarshal(responsePayload, &response); err != nil {
-				t.Fatalf("Failed to unmarshal response: %v", err)
-			}
-			
-			// Verify mutation was accepted
+			json.Unmarshal(responsePayload, &response)
+
 			if !response.Accepted {
-				t.Errorf("%s: Expected pod to be accepted, but it was rejected. Message: %v",
-					tc.description, response.Message)
+				t.Fatalf("Pod rejected: %v", response.Message)
 			}
-			
-			// Verify mutation occurred
 			if response.MutatedObject == nil {
-				t.Fatalf("%s: Expected mutation but got none", tc.description)
+				t.Fatal("Expected mutation but got none")
 			}
-			
+
 			// Parse mutated pod
-			mutatedPodJSON, err := json.Marshal(response.MutatedObject)
-			if err != nil {
-				t.Fatalf("Cannot marshal mutated object: %v", err)
-			}
-			
+			mutatedPodJSON, _ := json.Marshal(response.MutatedObject)
 			var mutatedPod corev1.Pod
-			if err := json.Unmarshal(mutatedPodJSON, &mutatedPod); err != nil {
-				t.Fatalf("Cannot unmarshal mutated pod: %v", err)
-			}
-			
-			// Verify the expected toleration exists
+			json.Unmarshal(mutatedPodJSON, &mutatedPod)
+
+			// Verify workload toleration exists with correct value
 			found := false
-			for _, toleration := range mutatedPod.Spec.Tolerations {
-				if toleration.Key == tc.expectedToleration.Key &&
-					toleration.Operator == tc.expectedToleration.Operator &&
-					toleration.Value == tc.expectedToleration.Value &&
-					toleration.Effect == tc.expectedToleration.Effect {
+			for _, tol := range mutatedPod.Spec.Tolerations {
+				if tol.Key == "workload" && 
+					tol.Operator == "Equal" && 
+					tol.Value == tc.workloadValue && 
+					tol.Effect == "NoExecute" {
 					found = true
 					break
 				}
 			}
-			
 			if !found {
-				t.Errorf("%s: Expected toleration not found in mutated pod. Tolerations: %+v",
-					tc.description, mutatedPod.Spec.Tolerations)
+				t.Errorf("Expected workload toleration with value '%s' not found", tc.workloadValue)
 			}
-			
-			// For the test with existing tolerations, verify other tolerations are preserved
-			if tc.name == "Pod with existing tolerations gets additional workload toleration" {
-				if len(mutatedPod.Spec.Tolerations) != 2 {
-					t.Errorf("Expected 2 tolerations, got %d", len(mutatedPod.Spec.Tolerations))
-				}
-				// Check that the GPU toleration is still there
-				foundGPU := false
-				for _, toleration := range mutatedPod.Spec.Tolerations {
-					if toleration.Key == "node-type" && toleration.Value == "gpu" {
-						foundGPU = true
-						break
-					}
-				}
-				if !foundGPU {
-					t.Errorf("Original GPU toleration was not preserved")
-				}
+
+			// Run test-specific verification
+			if tc.verifyFunc != nil {
+				tc.verifyFunc(t, &mutatedPod)
 			}
-			
-			// For the replacement test, verify old workload toleration is gone
-			if tc.name == "Pod with existing workload toleration gets it replaced" {
-				for _, toleration := range mutatedPod.Spec.Tolerations {
-					if toleration.Key == "workload" && toleration.Value == "old-value" {
-						t.Errorf("Old workload toleration should have been replaced but still exists")
-					}
-				}
-				// Verify other tolerations are preserved
-				foundOther := false
-				for _, toleration := range mutatedPod.Spec.Tolerations {
-					if toleration.Key == "other" && toleration.Value == "keep-this" {
-						foundOther = true
-						break
-					}
-				}
-				if !foundOther {
-					t.Errorf("Non-workload toleration was not preserved")
-				}
-			}
-			
-			// Clean up mock for next test
-			host.Client = nil
 		})
 	}
 }
