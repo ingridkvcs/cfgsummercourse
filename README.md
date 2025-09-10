@@ -83,6 +83,31 @@ func TestAllowedAppsAreNotMutated(t *testing.T) {
 			shouldPass:  true,
 			description: "CSI node DaemonSet should be accepted without mutations",
 		},
+  		{
+			name: "Deployment pod should not be mutated when allowed",
+			pod: corev1.Pod{
+				Metadata: &metav1.ObjectMeta{
+					Name:      "nginx-deployment-78abc",
+					Namespace: "production",
+					OwnerReferences: []*metav1.OwnerReference{
+						{
+							Kind: func() *string { s := "ReplicaSet"; return &s }(),
+							Name: func() *string { s := "nginx-deployment-5c8b9"; return &s }(),
+						},
+					},
+				},
+				Spec: &corev1.PodSpec{},
+			},
+			settings: Settings{
+				WorkloadTolerationKey: "workload",
+				WorkloadNamespaceTag:  "Workload",
+				AllowedApps: []AllowedApp{
+					{Kind: "Deployment", Name: "nginx-deployment", Namespace: "production"},
+				},
+			},
+			shouldPass:  true,
+			description: "Deployment pods should be accepted without mutations when allowed",
+		},
 	}
 
 	for _, tc := range testCases {
