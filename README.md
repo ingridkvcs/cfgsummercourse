@@ -295,3 +295,58 @@ func TestPodMutationWithTolerationAddition(t *testing.T) {
 		})
 	}
 }
+
+//go test -v
+=== RUN   TestAllowedAppsAreNotMutated
+=== RUN   TestAllowedAppsAreNotMutated/Cilium_DaemonSet_pod_should_not_be_mutated
+--- PASS: TestAllowedAppsAreNotMutated (0.00s)
+    --- PASS: TestAllowedAppsAreNotMutated/Cilium_DaemonSet_pod_should_not_be_mutated (0.00s)
+=== RUN   TestPodMutationWithTolerationAddition
+=== RUN   TestPodMutationWithTolerationAddition/Pod_gets_toleration_from_namespace_annotation
+--- FAIL: TestPodMutationWithTolerationAddition (0.00s)
+    --- FAIL: TestPodMutationWithTolerationAddition/Pod_gets_toleration_from_namespace_annotation (0.00s)
+panic: 
+        
+        mock: Unexpected Method Call
+        -----------------------------
+        
+        HostCall(string,string,string,[]uint8)
+                        0: "kubewarden"
+                        1: "kubernetes"
+                        2: "get_resource"
+                        3: []byte(nil)
+        
+        The closest call I have is: 
+        
+        HostCall(string,string,string,[]uint8)
+                        0: "kubewarden"
+                        1: "kubernetes"
+                        2: "get_resource"
+                        3: []byte{0x7b, 0x22, 0x61, 0x70, 0x69, 0x5f, 0x76, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, 0x22, 0x3a, 0x22, 0x76, 0x31, 0x22, 0x2c, 0x22, 0x6b, 0x69, 0x6e, 0x64, 0x22, 0x3a, 0x22, 0x4e, 0x61, 0x6d, 0x65, 0x73, 0x70, 0x61, 0x63, 0x65, 0x22, 0x2c, 0x22, 0x6e, 0x61, 0x6d, 0x65, 0x22, 0x3a, 0x22, 0x64, 0x65, 0x66, 0x61, 0x75, 0x6c, 0x74, 0x22, 0x2c, 0x22, 0x64, 0x69, 0x73, 0x61, 0x62, 0x6c, 0x65, 0x5f, 0x63, 0x61, 0x63, 0x68, 0x65, 0x22, 0x3a, 0x66, 0x61, 0x6c, 0x73, 0x65, 0x7d}
+        
+        Difference found in argument 3:
+        
+        --- Expected
+        +++ Actual
+        @@ -1,8 +1,2 @@
+        -([]uint8) (len=78) {
+        - 00000000  7b 22 61 70 69 5f 76 65  72 73 69 6f 6e 22 3a 22  |{"api_version":"|
+        - 00000010  76 31 22 2c 22 6b 69 6e  64 22 3a 22 4e 61 6d 65  |v1","kind":"Name|
+        - 00000020  73 70 61 63 65 22 2c 22  6e 61 6d 65 22 3a 22 64  |space","name":"d|
+        - 00000030  65 66 61 75 6c 74 22 2c  22 64 69 73 61 62 6c 65  |efault","disable|
+        - 00000040  5f 63 61 63 68 65 22 3a  66 61 6c 73 65 7d        |_cache":false}|
+        -}
+        +([]uint8) <nil>
+         
+        
+        Diff: 0: PASS:  (string=kubewarden) == (string=kubewarden)
+                1: PASS:  (string=kubernetes) == (string=kubernetes)
+                2: PASS:  (string=get_resource) == (string=get_resource)
+                3: FAIL:  ([]uint8=[]) != ([]uint8=[123 34 97 112 105 95 118 101 114 115 105 111 110 34 58 34 118 49 34 44 34 107 105 110 100 34 58 34 78 97 109 101 115 112 97 99 101 34 44 34 110 97 109 101 34 58 34 100 101 102 97 117 108 116 34 44 34 100 105 115 97 98 108 101 95 99 97 99 104 101 34 58 102 97 108 115 101 125])
+        at: [/Users/Ingrid.A.Kovacs/Workspace/add-workload-toleration/vendor/github.com/kubewarden/policy-sdk-go/pkg/capabilities/mocks/mock_WapcClient.go:24 /Users/Ingrid.A.Kovacs/Workspace/add-workload-toleration/validate.go:149 /Users/Ingrid.A.Kovacs/Workspace/add-workload-toleration/validate.go:51 /Users/Ingrid.A.Kovacs/Workspace/add-workload-toleration/validate_test.go:220]
+         [recovered, repanicked]
+
+goroutine 10 [running]:
+testing.tRunner.func1.2({0x1048f4d40, 0x140001cae40})
+        /Users/Ingrid.A.Kovacs/Workspace/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.0.darwin-arm64/src/testing/testing.go:1872 +0x190
+testing.tRunner.func1()
