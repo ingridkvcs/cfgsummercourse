@@ -408,3 +408,16 @@ func TestPodMutationWithTolerationAddition(t *testing.T) {
 		})
 	}
 }
+
+
+=== RUN   TestPodMutationWithTolerationAddition
+=== RUN   TestPodMutationWithTolerationAddition/Pod_gets_toleration_from_namespace_annotation
+    validate_test.go:277: Expected workload toleration with value 'frontend' not found
+=== RUN   TestPodMutationWithTolerationAddition/Pod_with_existing_tolerations_gets_additional_workload_toleration
+    validate_test.go:277: Expected workload toleration with value 'platform' not found
+=== RUN   TestPodMutationWithTolerationAddition/Pod_with_existing_workload_toleration_gets_it_replaced
+    validate_test.go:277: Expected workload toleration with value 'platform' not found
+--- FAIL: TestPodMutationWithTolerationAddition (0.00s)
+    --- FAIL: TestPodMutationWithTolerationAddition/Pod_gets_toleration_from_namespace_annotation (0.00s)
+    --- FAIL: TestPodMutationWithTolerationAddition/Pod_with_existing_tolerations_gets_additional_workload_toleration (0.00s)
+    --- FAIL: TestPodMutationWithTolerationAddition/Pod_with_existing_workload_toleration_gets_it_replaced (0.00s)
