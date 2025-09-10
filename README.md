@@ -108,6 +108,31 @@ func TestAllowedAppsAreNotMutated(t *testing.T) {
 			shouldPass:  true,
 			description: "Deployment pods should be accepted without mutations when allowed",
 		},
+  		{
+			name: "Case sensitive matching - different case should not match",
+			pod: corev1.Pod{
+				Metadata: &metav1.ObjectMeta{
+					Name:      "cilium-agent-xyz",
+					Namespace: "kube-system",
+					OwnerReferences: []*metav1.OwnerReference{
+						{
+							Kind: func() *string { s := "DaemonSet"; return &s }(),
+							Name: func() *string { s := "Cilium"; return &s }(), // Capital C
+						},
+					},
+				},
+				Spec: &corev1.PodSpec{},
+			},
+			settings: Settings{
+				WorkloadTolerationKey: "workload",
+				WorkloadNamespaceTag:  "Workload",
+				AllowedApps: []AllowedApp{
+					{Kind: "DaemonSet", Name: "cilium", Namespace: "kube-system"}, // lowercase c
+				},
+			},
+			shouldPass:  false, // Should get mutated due to case mismatch
+			description: "Name matching should be case sensitive",
+		},
 	}
 
 	for _, tc := range testCases {
