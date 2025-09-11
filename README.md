@@ -402,3 +402,60 @@ func TestDaemonSetPodsAreNotMutated(t *testing.T) {
 		t.Errorf("DaemonSet pods should not be mutated, but mutation occurred")
 	}
 }
+
+func TestPodNoMutationWhenNamespaceHasNoWorkloadAnnotation(t *testing.T) {
+	// Test 1: Pod should not get toleration when namespace has no Workload annotation
+	settings := Settings{
+		WorkloadTolerationKey: "workload",
+		WorkloadNamespaceTag:  "Workload",
+		AllowedApps:           []AllowedApp{},
+	}
+
+	pod := corev1.Pod{
+		Metadata: &metav1.ObjectMeta{
+			Name:      "test-pod",
+			Namespace: "test-namespace",
+		},
+		Spec: &corev1.PodSpec{
+			Tolerations: nil,
+		},
+	}
+
+	// Create namespace WITHOUT workload annotation
+	namespace := corev1.Namespace{
+		Metadata: &metav1.ObjectMeta{
+			Name: "test-namespace",
+			Annotations: map[string]string{
+				// No "Workload" annotation
+				"other-annotation": "some-value",
+			},
+		},
+	}
+
+	// Setup mock
+	mockClient := &mocks.MockWapcClient{}
+	namespaceRaw, _ := json.Marshal(namespace)
+	mockClient.On("HostCall", "kubewarden", "kubernetes", "get_resource", mock.Anything).Return(namespaceRaw, nil)
+	host.Client = mockClient
+	defer func() { host.Client = nil }()
+
+	// Execute validation
+	payload, _ := kubewarden_testing.BuildValidationRequest(&pod, &settings)
+	responsePayload, err := validate(payload)
+	if err != nil {
+		t.Fatalf("Validation failed: %v", err)
+	}
+
+	// Parse response
+	var response kubewarden_protocol.ValidationResponse
+	json.Unmarshal(responsePayload, &response)
+
+	if !response.Accepted {
+		t.Fatalf("Pod should be accepted: %v", response.Message)
+	}
+
+	// Verify NO mutation occurred
+	if response.MutatedObject != nil {
+		t.Errorf("Expected no mutation when namespace has no Workload annotation, but mutation occurred")
+	}
+}
