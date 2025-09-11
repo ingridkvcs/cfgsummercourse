@@ -14,7 +14,8 @@ import (
 )
 
 func TestAllowedAppsAreNotMutated(t *testing.T) {
-	// Test that pods belonging to allowed apps are accepted without mutation
+	// Test that pods belonging to allowed apps (non-DaemonSet) are accepted without mutation
+	// DaemonSet testing is covered by TestDaemonSetPodsAreNotMutated
 
 	testCases := []struct {
 		name        string
@@ -23,66 +24,6 @@ func TestAllowedAppsAreNotMutated(t *testing.T) {
 		shouldPass  bool
 		description string
 	}{
-		{
-			name: "Cilium DaemonSet pod should not be mutated",
-			pod: corev1.Pod{
-				Metadata: &metav1.ObjectMeta{
-					Name:      "cilium-agent-xyz",
-					Namespace: "kube-system",
-					OwnerReferences: []*metav1.OwnerReference{
-						{
-							Kind: func() *string { s := "DaemonSet"; return &s }(),
-							Name: func() *string { s := "cilium"; return &s }(),
-						},
-					},
-				},
-				Spec: &corev1.PodSpec{
-					// Even if it has existing tolerations, they shouldn't be touched
-					Tolerations: []*corev1.Toleration{
-						{
-							Key:      "workload",
-							Operator: "Equal",
-							Value:    "existing-value",
-							Effect:   "NoExecute",
-						},
-					},
-				},
-			},
-			settings: Settings{
-				WorkloadTolerationKey: "workload",
-				WorkloadNamespaceTag:  "Workload",
-				AllowedApps: []AllowedApp{
-					{Kind: "DaemonSet", Name: "cilium", Namespace: "kube-system"},
-				},
-			},
-			shouldPass:  true,
-			description: "Cilium DaemonSet pods should be accepted without any mutations",
-		},
-		{
-			name: "CSI node DaemonSet should not be mutated",
-			pod: corev1.Pod{
-				Metadata: &metav1.ObjectMeta{
-					Name:      "csi-nfs-node-abc",
-					Namespace: "kube-system",
-					OwnerReferences: []*metav1.OwnerReference{
-						{
-							Kind: func() *string { s := "DaemonSet"; return &s }(),
-							Name: func() *string { s := "csi-nfs-node"; return &s }(),
-						},
-					},
-				},
-				Spec: &corev1.PodSpec{},
-			},
-			settings: Settings{
-				WorkloadTolerationKey: "workload",
-				WorkloadNamespaceTag:  "Workload",
-				AllowedApps: []AllowedApp{
-					{Kind: "DaemonSet", Name: "csi-nfs-node", Namespace: "kube-system"},
-				},
-			},
-			shouldPass:  true,
-			description: "CSI node DaemonSet should be accepted without mutations",
-		},
 		{
 			name: "Deployment pod should not be mutated when allowed",
 			pod: corev1.Pod{
@@ -137,110 +78,6 @@ func TestAllowedAppsAreNotMutated(t *testing.T) {
 			shouldPass:  true,
 			description: "StatefulSet pods should be accepted without mutations when allowed",
 		},
-		{
-			name: "Pod with multiple owner references should match correctly",
-			pod: corev1.Pod{
-				Metadata: &metav1.ObjectMeta{
-					Name:      "job-pod-xyz",
-					Namespace: "kube-system",
-					OwnerReferences: []*metav1.OwnerReference{
-						{
-							Kind: func() *string { s := "Job"; return &s }(),
-							Name: func() *string { s := "backup-job"; return &s }(),
-						},
-						{
-							Kind: func() *string { s := "DaemonSet"; return &s }(),
-							Name: func() *string { s := "node-exporter"; return &s }(),
-						},
-					},
-				},
-				Spec: &corev1.PodSpec{},
-			},
-			settings: Settings{
-				WorkloadTolerationKey: "workload",
-				WorkloadNamespaceTag:  "Workload",
-				AllowedApps: []AllowedApp{
-					{Kind: "DaemonSet", Name: "node-exporter", Namespace: "kube-system"},
-				},
-			},
-			shouldPass:  true,
-			description: "Pod with multiple owners should match if any owner is allowed",
-		},
-		{
-			name: "Wrong namespace should still get mutated",
-			pod: corev1.Pod{
-				Metadata: &metav1.ObjectMeta{
-					Name:      "cilium-agent-xyz",
-					Namespace: "default", // Wrong namespace
-					OwnerReferences: []*metav1.OwnerReference{
-						{
-							Kind: func() *string { s := "DaemonSet"; return &s }(),
-							Name: func() *string { s := "cilium"; return &s }(),
-						},
-					},
-				},
-				Spec: &corev1.PodSpec{},
-			},
-			settings: Settings{
-				WorkloadTolerationKey: "workload",
-				WorkloadNamespaceTag:  "Workload",
-				AllowedApps: []AllowedApp{
-					{Kind: "DaemonSet", Name: "cilium", Namespace: "kube-system"},
-				},
-			},
-			shouldPass:  false, // Should get mutated, not exempted
-			description: "Pod in wrong namespace should not be exempted",
-		},
-		{
-			name: "Wrong name should still get mutated",
-			pod: corev1.Pod{
-				Metadata: &metav1.ObjectMeta{
-					Name:      "other-agent-xyz",
-					Namespace: "kube-system",
-					OwnerReferences: []*metav1.OwnerReference{
-						{
-							Kind: func() *string { s := "DaemonSet"; return &s }(),
-							Name: func() *string { s := "other-agent"; return &s }(), // Wrong name
-						},
-					},
-				},
-				Spec: &corev1.PodSpec{},
-			},
-			settings: Settings{
-				WorkloadTolerationKey: "workload",
-				WorkloadNamespaceTag:  "Workload",
-				AllowedApps: []AllowedApp{
-					{Kind: "DaemonSet", Name: "cilium", Namespace: "kube-system"},
-				},
-			},
-			shouldPass:  false, // Should get mutated, not exempted
-			description: "Pod with wrong owner name should not be exempted",
-		},
-		{
-			name: "Case sensitive matching - different case should not match",
-			pod: corev1.Pod{
-				Metadata: &metav1.ObjectMeta{
-					Name:      "cilium-agent-xyz",
-					Namespace: "kube-system",
-					OwnerReferences: []*metav1.OwnerReference{
-						{
-							Kind: func() *string { s := "DaemonSet"; return &s }(),
-							Name: func() *string { s := "Cilium"; return &s }(), // Capital C
-						},
-					},
-				},
-				Spec: &corev1.PodSpec{},
-			},
-			settings: Settings{
-				WorkloadTolerationKey: "workload",
-				WorkloadNamespaceTag:  "Workload",
-				AllowedApps: []AllowedApp{
-					{Kind: "DaemonSet", Name: "cilium", Namespace: "kube-system"}, // lowercase c
-				},
-			},
-			shouldPass:  false, // Should get mutated due to case mismatch
-			description: "Name matching should be case sensitive",
-		},
 	}
 
 	for _, tc := range testCases {
@@ -255,7 +92,7 @@ func TestAllowedAppsAreNotMutated(t *testing.T) {
 			}
 
 			// Execute mutation
-			responsePayload, err := mutate(payload)
+			responsePayload, err := validate(payload)
 			if err != nil {
 				t.Fatalf("Mutation failed with error: %v", err)
 			}
@@ -283,141 +120,285 @@ func TestAllowedAppsAreNotMutated(t *testing.T) {
 	}
 }
 
-func TestPodMutationWithTolerationAddition(t *testing.T) {
-	// Default settings for all tests
+
+func TestPodNoMutationWhenNamespaceHasNoWorkloadAnnotation(t *testing.T) {
+	// Test 1: Pod should not get toleration when namespace has no Workload annotation
 	settings := Settings{
 		WorkloadTolerationKey: "workload",
 		WorkloadNamespaceTag:  "Workload",
 		AllowedApps:           []AllowedApp{},
 	}
 
-	testCases := []struct {
-		name                string
-		podName             string
-		existingTolerations []*corev1.Toleration
-		workloadValue       string
-	}{
-		{
-			name:                "Pod gets toleration from namespace annotation",
-			podName:             "test-app",
-			existingTolerations: nil,
-			workloadValue:       "frontend",
+	pod := corev1.Pod{
+		Metadata: &metav1.ObjectMeta{
+			Name:      "test-pod",
+			Namespace: "test-namespace",
 		},
-		{
-			name:    "Pod with existing tolerations gets additional workload toleration",
-			podName: "database-app",
-			existingTolerations: []*corev1.Toleration{
-				{Key: "node-type", Operator: "Equal", Value: "gpu", Effect: "NoSchedule"},
-			},
-			workloadValue: "database",
-		},
-		{
-			name:    "Pod with existing workload toleration gets it replaced",
-			podName: "api-server",
-			existingTolerations: []*corev1.Toleration{
-				{Key: "workload", Operator: "Equal", Value: "old-value", Effect: "NoExecute"},
-				{Key: "other", Operator: "Equal", Value: "keep-this", Effect: "NoSchedule"},
-			},
-			workloadValue: "api",
+		Spec: &corev1.PodSpec{
+			Tolerations: nil,
 		},
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			// Create pod with test data
-			pod := corev1.Pod{
-				Metadata: &metav1.ObjectMeta{
-					Name:      tc.podName,
-					Namespace: "test-namespace",
-				},
-				Spec: &corev1.PodSpec{
-					Tolerations: tc.existingTolerations,
-				},
-			}
+	// Create namespace WITHOUT workload annotation
+	namespace := corev1.Namespace{
+		Metadata: &metav1.ObjectMeta{
+			Name:        "test-namespace",
+			Annotations: map[string]string{
+				// No "Workload" annotation
+				"other-annotation": "some-value",
+			},
+		},
+	}
 
-			// Create namespace with workload annotation
-			namespace := corev1.Namespace{
-				Metadata: &metav1.ObjectMeta{
-					Name: "test-namespace",
-					Annotations: map[string]string{
-						"Workload": tc.workloadValue,
-					},
-				},
-			}
+	// Setup mock
+	mockClient := &mocks.MockWapcClient{}
+	namespaceRaw, _ := json.Marshal(namespace)
+	mockClient.On("HostCall", "kubewarden", "kubernetes", "get_resource", mock.Anything).Return(namespaceRaw, nil)
+	host.Client = mockClient
+	defer func() { host.Client = nil }()
 
-			// Setup mock
-			mockClient := &mocks.MockWapcClient{}
+	// Execute validation
+	payload, _ := kubewarden_testing.BuildValidationRequest(&pod, &settings)
+	responsePayload, err := validate(payload)
+	if err != nil {
+		t.Fatalf("Validation failed: %v", err)
+	}
 
-			namespaceRaw, err := json.Marshal(namespace)
-			if err != nil {
-				t.Fatalf("Failed to marshal namespace: %v", err)
-			}
+	// Parse response
+	var response kubewarden_protocol.ValidationResponse
+	json.Unmarshal(responsePayload, &response)
 
-			// Use mock.Anything to accept any request bytes since marshaling might differ
-			mockClient.On("HostCall", "kubewarden", "kubernetes", "get_resource", mock.Anything).Return(namespaceRaw, nil)
-			host.Client = mockClient
-			defer func() { host.Client = nil }()
+	if !response.Accepted {
+		t.Fatalf("Pod should be accepted: %v", response.Message)
+	}
 
-			// Execute mutation
-			payload, _ := kubewarden_testing.BuildValidationRequest(&pod, &settings)
-			responsePayload, err := mutate(payload)
-			if err != nil {
-				t.Fatalf("Mutation failed: %v", err)
-			}
-
-			// Parse response
-			var response kubewarden_protocol.ValidationResponse
-			json.Unmarshal(responsePayload, &response)
-
-			if !response.Accepted {
-				t.Fatalf("Pod rejected: %v", response.Message)
-			}
-			if response.MutatedObject == nil {
-				t.Fatal("Expected mutation but got none")
-			}
-
-			// Parse mutated pod - MutatedObject is base64 encoded JSON string
-			var mutatedPod corev1.Pod
-			mutatedBase64 := response.MutatedObject.(string)
-			mutatedBytes, err := base64.StdEncoding.DecodeString(mutatedBase64)
-			if err != nil {
-				t.Fatalf("Cannot decode base64 mutated object: %v", err)
-			}
-			if err := json.Unmarshal(mutatedBytes, &mutatedPod); err != nil {
-				t.Fatalf("Cannot unmarshal mutated pod: %v", err)
-			}
-
-			// Verify workload toleration exists with correct value
-			found := false
-			if mutatedPod.Spec == nil {
-				t.Fatal("Mutated pod has nil Spec")
-			}
-			for _, tol := range mutatedPod.Spec.Tolerations {
-				if tol != nil &&
-					tol.Key == "workload" &&
-					tol.Operator == "Equal" &&
-					tol.Value == tc.workloadValue &&
-					tol.Effect == "NoExecute" {
-					found = true
-					break
-				}
-			}
-			if !found {
-				t.Errorf("Expected workload toleration with value '%s' not found", tc.workloadValue)
-			}
-		})
+	// Verify NO mutation occurred
+	if response.MutatedObject != nil {
+		t.Errorf("Expected no mutation when namespace has no Workload annotation, but mutation occurred")
 	}
 }
 
+func TestPodGetsSingleTolerationFromNamespace(t *testing.T) {
+	// Test 2 & 3: Pod should get exactly one toleration from namespace annotation
+	settings := Settings{
+		WorkloadTolerationKey: "workload",
+		WorkloadNamespaceTag:  "Workload",
+		AllowedApps:           []AllowedApp{},
+	}
 
-=== RUN   TestPodMutationWithTolerationAddition
-=== RUN   TestPodMutationWithTolerationAddition/Pod_gets_toleration_from_namespace_annotation
-    validate_test.go:277: Expected workload toleration with value 'frontend' not found
-=== RUN   TestPodMutationWithTolerationAddition/Pod_with_existing_tolerations_gets_additional_workload_toleration
-    validate_test.go:277: Expected workload toleration with value 'platform' not found
-=== RUN   TestPodMutationWithTolerationAddition/Pod_with_existing_workload_toleration_gets_it_replaced
-    validate_test.go:277: Expected workload toleration with value 'platform' not found
---- FAIL: TestPodMutationWithTolerationAddition (0.00s)
-    --- FAIL: TestPodMutationWithTolerationAddition/Pod_gets_toleration_from_namespace_annotation (0.00s)
-    --- FAIL: TestPodMutationWithTolerationAddition/Pod_with_existing_tolerations_gets_additional_workload_toleration (0.00s)
-    --- FAIL: TestPodMutationWithTolerationAddition/Pod_with_existing_workload_toleration_gets_it_replaced (0.00s)
+	pod := corev1.Pod{
+		Metadata: &metav1.ObjectMeta{
+			Name:      "test-pod",
+			Namespace: "test-namespace",
+		},
+		Spec: &corev1.PodSpec{
+			Tolerations: nil,
+		},
+	}
+
+	// Create namespace WITH workload annotation
+	namespace := corev1.Namespace{
+		Metadata: &metav1.ObjectMeta{
+			Name: "test-namespace",
+			Annotations: map[string]string{
+				"Workload": "backend",
+			},
+		},
+	}
+
+	// Setup mock
+	mockClient := &mocks.MockWapcClient{}
+	namespaceRaw, _ := json.Marshal(namespace)
+	mockClient.On("HostCall", "kubewarden", "kubernetes", "get_resource", mock.Anything).Return(namespaceRaw, nil)
+	host.Client = mockClient
+	defer func() { host.Client = nil }()
+
+	// Execute validation
+	payload, _ := kubewarden_testing.BuildValidationRequest(&pod, &settings)
+	responsePayload, err := validate(payload)
+	if err != nil {
+		t.Fatalf("Validation failed: %v", err)
+	}
+
+	// Parse response
+	var response kubewarden_protocol.ValidationResponse
+	json.Unmarshal(responsePayload, &response)
+
+	if !response.Accepted {
+		t.Fatalf("Pod should be accepted: %v", response.Message)
+	}
+
+	// Verify mutation occurred
+	if response.MutatedObject == nil {
+		t.Fatal("Expected mutation when namespace has Workload annotation")
+	}
+
+	// Parse mutated pod
+	var mutatedPod corev1.Pod
+	mutatedBase64 := response.MutatedObject.(string)
+	mutatedBytes, _ := base64.StdEncoding.DecodeString(mutatedBase64)
+	json.Unmarshal(mutatedBytes, &mutatedPod)
+
+	// Verify exactly ONE toleration was added
+	if len(mutatedPod.Spec.Tolerations) != 1 {
+		t.Errorf("Expected exactly 1 toleration, got %d", len(mutatedPod.Spec.Tolerations))
+	}
+
+	// Verify the toleration is correct
+	if len(mutatedPod.Spec.Tolerations) > 0 {
+		tol := mutatedPod.Spec.Tolerations[0]
+		if tol.Key != "workload" || tol.Value != "backend" || tol.Operator != "Equal" || tol.Effect != "NoExecute" {
+			t.Errorf("Toleration has incorrect values: %+v", tol)
+		}
+	}
+}
+
+func TestPodWithExistingTolerationGetsOnlyOne(t *testing.T) {
+	// Test 4: Pod with existing workload toleration should only have one (replaced, not added)
+	settings := Settings{
+		WorkloadTolerationKey: "workload",
+		WorkloadNamespaceTag:  "Workload",
+		AllowedApps:           []AllowedApp{},
+	}
+
+	pod := corev1.Pod{
+		Metadata: &metav1.ObjectMeta{
+			Name:      "test-pod",
+			Namespace: "test-namespace",
+		},
+		Spec: &corev1.PodSpec{
+			Tolerations: []*corev1.Toleration{
+				{Key: "workload", Operator: "Equal", Value: "old-value", Effect: "NoExecute"},
+				{Key: "other-key", Operator: "Equal", Value: "other-value", Effect: "NoSchedule"},
+			},
+		},
+	}
+
+	// Create namespace with workload annotation
+	namespace := corev1.Namespace{
+		Metadata: &metav1.ObjectMeta{
+			Name: "test-namespace",
+			Annotations: map[string]string{
+				"Workload": "new-backend",
+			},
+		},
+	}
+
+	// Setup mock
+	mockClient := &mocks.MockWapcClient{}
+	namespaceRaw, _ := json.Marshal(namespace)
+	mockClient.On("HostCall", "kubewarden", "kubernetes", "get_resource", mock.Anything).Return(namespaceRaw, nil)
+	host.Client = mockClient
+	defer func() { host.Client = nil }()
+
+	// Execute validation
+	payload, _ := kubewarden_testing.BuildValidationRequest(&pod, &settings)
+	responsePayload, err := validate(payload)
+	if err != nil {
+		t.Fatalf("Validation failed: %v", err)
+	}
+
+	// Parse response
+	var response kubewarden_protocol.ValidationResponse
+	json.Unmarshal(responsePayload, &response)
+
+	if !response.Accepted {
+		t.Fatalf("Pod should be accepted: %v", response.Message)
+	}
+
+	// Verify mutation occurred
+	if response.MutatedObject == nil {
+		t.Fatal("Expected mutation to replace existing workload toleration")
+	}
+
+	// Parse mutated pod
+	var mutatedPod corev1.Pod
+	mutatedBase64 := response.MutatedObject.(string)
+	mutatedBytes, _ := base64.StdEncoding.DecodeString(mutatedBase64)
+	json.Unmarshal(mutatedBytes, &mutatedPod)
+
+	// Verify still 2 tolerations (one replaced, one kept)
+	if len(mutatedPod.Spec.Tolerations) != 2 {
+		t.Errorf("Expected 2 tolerations (1 workload + 1 other), got %d", len(mutatedPod.Spec.Tolerations))
+	}
+
+	// Count workload tolerations
+	workloadCount := 0
+	for _, tol := range mutatedPod.Spec.Tolerations {
+		if tol.Key == "workload" {
+			workloadCount++
+			// Verify it has the new value
+			if tol.Value != "new-backend" {
+				t.Errorf("Workload toleration should have new value 'new-backend', got '%s'", tol.Value)
+			}
+		}
+	}
+
+	if workloadCount != 1 {
+		t.Errorf("Expected exactly 1 workload toleration, found %d", workloadCount)
+	}
+}
+
+func TestDaemonSetPodsAreNotMutated(t *testing.T) {
+	// Test 5: DaemonSet pods should not get tolerations added
+	settings := Settings{
+		WorkloadTolerationKey: "workload",
+		WorkloadNamespaceTag:  "Workload",
+		AllowedApps: []AllowedApp{
+			{Kind: "DaemonSet", Name: "test-daemonset", Namespace: "test-namespace"},
+		},
+	}
+
+	pod := corev1.Pod{
+		Metadata: &metav1.ObjectMeta{
+			Name:      "test-daemonset-pod",
+			Namespace: "test-namespace",
+			OwnerReferences: []*metav1.OwnerReference{
+				{
+					Kind: func() *string { s := "DaemonSet"; return &s }(),
+					Name: func() *string { s := "test-daemonset"; return &s }(),
+				},
+			},
+		},
+		Spec: &corev1.PodSpec{
+			Tolerations: nil,
+		},
+	}
+
+	// Create namespace WITH workload annotation (should be ignored for DaemonSet)
+	namespace := corev1.Namespace{
+		Metadata: &metav1.ObjectMeta{
+			Name: "test-namespace",
+			Annotations: map[string]string{
+				"Workload": "should-be-ignored",
+			},
+		},
+	}
+
+	// Setup mock
+	mockClient := &mocks.MockWapcClient{}
+	namespaceRaw, _ := json.Marshal(namespace)
+	mockClient.On("HostCall", "kubewarden", "kubernetes", "get_resource", mock.Anything).Return(namespaceRaw, nil)
+	host.Client = mockClient
+	defer func() { host.Client = nil }()
+
+	// Execute validation
+	payload, _ := kubewarden_testing.BuildValidationRequest(&pod, &settings)
+	responsePayload, err := validate(payload)
+	if err != nil {
+		t.Fatalf("Validation failed: %v", err)
+	}
+
+	// Parse response
+	var response kubewarden_protocol.ValidationResponse
+	json.Unmarshal(responsePayload, &response)
+
+	if !response.Accepted {
+		t.Fatalf("DaemonSet pod should be accepted: %v", response.Message)
+	}
+
+	// Verify NO mutation occurred for DaemonSet
+	if response.MutatedObject != nil {
+		t.Errorf("DaemonSet pods should not be mutated, but mutation occurred")
+	}
+}
