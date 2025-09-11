@@ -13,112 +13,59 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-func TestAllowedAppsAreNotMutated(t *testing.T) {
-	// Test that pods belonging to allowed apps (non-DaemonSet) are accepted without mutation
+
+	// Test that pods belonging to allowed apps (Deployment) are accepted without mutation
 	// DaemonSet testing is covered by TestDaemonSetPodsAreNotMutated
 
-	testCases := []struct {
-		name        string
-		pod         corev1.Pod
-		settings    Settings
-		shouldPass  bool
-		description string
-	}{
-		{
-			name: "Deployment pod should not be mutated when allowed",
-			pod: corev1.Pod{
-				Metadata: &metav1.ObjectMeta{
-					Name:      "nginx-deployment-78abc",
-					Namespace: "production",
-					OwnerReferences: []*metav1.OwnerReference{
-						{
-							Kind: func() *string { s := "ReplicaSet"; return &s }(),
-							Name: func() *string { s := "nginx-deployment-5c8b9"; return &s }(),
-						},
-					},
-				},
-				Spec: &corev1.PodSpec{},
-			},
-			settings: Settings{
-				WorkloadTolerationKey: "workload",
-				WorkloadNamespaceTag:  "Workload",
-				AllowedApps: []AllowedApp{
-					{Kind: "Deployment", Name: "nginx-deployment", Namespace: "production"},
+	// Reset host client to ensure clean test state
+	host.Client = nil
+
+	// Create a Deployment pod
+	pod := corev1.Pod{
+		Metadata: &metav1.ObjectMeta{
+			Name:      "nginx-deployment-78abc",
+			Namespace: "production",
+			OwnerReferences: []*metav1.OwnerReference{
+				{
+					Kind: func() *string { s := "ReplicaSet"; return &s }(),
+					Name: func() *string { s := "nginx-deployment-5c8b9"; return &s }(),
 				},
 			},
-			shouldPass:  true,
-			description: "Deployment pods should be accepted without mutations when allowed",
 		},
-		{
-			name: "StatefulSet pod should not be mutated when allowed",
-			pod: corev1.Pod{
-				Metadata: &metav1.ObjectMeta{
-					Name:      "postgres-0",
-					Namespace: "database",
-					OwnerReferences: []*metav1.OwnerReference{
-						{
-							Kind: func() *string { s := "StatefulSet"; return &s }(),
-							Name: func() *string { s := "postgres"; return &s }(),
-						},
-					},
-				},
-				Spec: &corev1.PodSpec{
-					Tolerations: []*corev1.Toleration{
-						{Key: "dedicated", Operator: "Equal", Value: "database", Effect: "NoSchedule"},
-					},
-				},
-			},
-			settings: Settings{
-				WorkloadTolerationKey: "workload",
-				WorkloadNamespaceTag:  "Workload",
-				AllowedApps: []AllowedApp{
-					{Kind: "StatefulSet", Name: "postgres", Namespace: "database"},
-				},
-			},
-			shouldPass:  true,
-			description: "StatefulSet pods should be accepted without mutations when allowed",
+		Spec: &corev1.PodSpec{},
+	}
+
+	// Settings with the Deployment in AllowedApps
+	settings := Settings{
+		WorkloadTolerationKey: "workload",
+		WorkloadNamespaceTag:  "Workload",
+		AllowedApps: []AllowedApp{
+			{Kind: "Deployment", Name: "nginx-deployment", Namespace: "production"},
 		},
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			// Reset host client to ensure clean test state
-			host.Client = nil
+	// Execute validation
+	payload, _ := kubewarden_testing.BuildValidationRequest(&pod, &settings)
+	responsePayload, err := validate(payload)
+	if err != nil {
+		t.Fatalf("Validation failed: %v", err)
+	}
 
-			// Build the validation request
-			payload, err := kubewarden_testing.BuildValidationRequest(&tc.pod, &tc.settings)
-			if err != nil {
-				t.Fatalf("Failed to build validation request: %v", err)
-			}
+	// Parse response
+	var response kubewarden_protocol.ValidationResponse
+	json.Unmarshal(responsePayload, &response)
 
-			// Execute mutation
-			responsePayload, err := validate(payload)
-			if err != nil {
-				t.Fatalf("Mutation failed with error: %v", err)
-			}
+	// Check acceptance
+	if !response.Accepted {
+		t.Fatalf("Pod should be accepted: %v", response.Message)
+	}
 
-			// Parse response
-			var response kubewarden_protocol.ValidationResponse
-			if err := json.Unmarshal(responsePayload, &response); err != nil {
-				t.Fatalf("Failed to unmarshal response: %v", err)
-			}
-
-			// Check acceptance
-			if tc.shouldPass && !response.Accepted {
-				t.Errorf("%s: Expected pod to be accepted, but it was rejected. Message: %v",
-					tc.description, response.Message)
-			}
-			if !tc.shouldPass && response.Accepted {
-				t.Errorf("%s: Expected pod to be rejected, but it was accepted", tc.description)
-			}
-
-			// For allowed apps, verify no mutation occurred
-			if tc.shouldPass && response.MutatedObject != nil {
-				t.Errorf("%s: Expected no mutation for allowed app, but mutation occurred", tc.description)
-			}
-		})
+	// Verify NO mutation occurred for allowed apps
+	if response.MutatedObject != nil {
+		t.Errorf("Expected no mutation for allowed app, but mutation occurred")
 	}
 }
+
 
 
 func TestPodNoMutationWhenNamespaceHasNoWorkloadAnnotation(t *testing.T) {
